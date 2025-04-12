@@ -11,13 +11,13 @@ const PORT = process.env.PORT || 3000;
 const WEB_API_KEY = process.env.STEAM_WEB_API_KEY;
 const APP_ID = process.env.STEAM_APP_ID;
 
-// 🎲 Define aura drop table
+// 🎲 Aura drop odds
 const dropTable = [
   { itemdefid: 2001, weight: 75 },   // Common
   { itemdefid: 2002, weight: 30 },   // Uncommon
   { itemdefid: 2003, weight: 10 },   // Rare
   { itemdefid: 2004, weight: 3 },    // Epic
-  { itemdefid: 2005, weight: 1 },    // Legendary
+  { itemdefid: 2005, weight: 1 }     // Legendary
 ];
 
 function pickRandomItemDefId() {
@@ -33,13 +33,13 @@ function pickRandomItemDefId() {
   return dropTable[0].itemdefid;
 }
 
-// 🛡️ Cooldown tracking
+// ⏳ Rate limiting in-memory
 const rateLimitCache = new Map();
 const RATE_LIMIT_SECONDS = 30;
 
-// 🎯 Roll endpoint
 app.post('/roll-aura', async (req, res) => {
   const { steamId, authTicket } = req.body;
+
   if (!steamId || !authTicket) {
     return res.status(400).json({ error: 'Missing steamId or authTicket' });
   }
@@ -51,23 +51,27 @@ app.post('/roll-aura', async (req, res) => {
   }
 
   try {
-    const authURL = `https://api.steampowered.com/ISteamUserAuth/AuthenticateUserTicket/v1/` +
-                    `?key=${WEB_API_KEY}&appid=${APP_ID}&ticket=${encodeURIComponent(authTicket)}`;
+    console.log(`[AUTH] Validating ticket for ${steamId}...`);
 
-    console.log('[AUTH] Calling Steam for ticket validation...');
-    const authResponse = await axios.get(authURL, { timeout: 5000 });
+    const steamAuthUrl = 'https://api.steampowered.com/ISteamUserAuth/AuthenticateUserTicket/v1/';
+    const authResponse = await axios.get(steamAuthUrl, {
+      params: {
+        key: WEB_API_KEY,
+        appid: APP_ID,
+        ticket: authTicket
+      },
+      timeout: 5000
+    });
 
-    console.log('[AUTH] Steam response:', authResponse.data);
+    const data = authResponse?.data?.response?.params;
 
-    const result = authResponse?.data?.response;
-
-    if (!result || !result.steamid) {
-      console.error('[SteamAuth] Invalid response:', authResponse?.data);
-      return res.status(401).json({ error: 'Invalid Steam auth ticket (no steamid)' });
+    if (!data || data.result !== 'OK') {
+      console.error('[SteamAuth] Invalid result:', authResponse.data);
+      return res.status(401).json({ error: 'Steam rejected auth ticket' });
     }
 
-    if (result.steamid !== steamId) {
-      console.error(`[SteamAuth] Mismatch: expected ${steamId}, got ${result.steamid}`);
+    if (data.steamid !== steamId) {
+      console.error(`[SteamAuth] Mismatch: expected ${steamId}, got ${data.steamid}`);
       return res.status(401).json({ error: 'Steam ID does not match ticket' });
     }
 
@@ -80,12 +84,13 @@ app.post('/roll-aura', async (req, res) => {
 
     await axios.post(grantUrl);
     console.log(`[GRANT] Gave item ${itemdefid} to ${steamId}`);
+
     return res.status(200).json({ success: true, itemdefid });
 
   } catch (err) {
-    const isSteamError = err.response?.data?.response || err.response?.data;
-    console.error('[ROLL ERROR]', isSteamError || err.message);
-    return res.status(502).json({ error: 'Steam validation failed', details: err.message });
+    const message = err.response?.data || err.message;
+    console.error('[ROLL ERROR]', message);
+    return res.status(502).json({ error: 'Steam validation failed', details: message });
   }
 });
 
