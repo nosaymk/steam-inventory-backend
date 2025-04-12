@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 const WEB_API_KEY = process.env.STEAM_WEB_API_KEY;
 const APP_ID = process.env.STEAM_APP_ID;
 
-// Define drop odds
+// 🎲 Define drop table
 const dropTable = [
   { itemdefid: 2001, weight: 75 },   // Common
   { itemdefid: 2002, weight: 30 },   // Uncommon
@@ -30,13 +30,14 @@ function pickRandomItemDefId() {
     if (roll < cumulative) return entry.itemdefid;
   }
 
-  return dropTable[0].itemdefid; // Fallback
+  return dropTable[0].itemdefid;
 }
 
-// In-memory cooldown (can upgrade to Redis or DB later)
+// 🛡️ Cooldown memory
 const rateLimitCache = new Map();
 const RATE_LIMIT_SECONDS = 30;
 
+// 🎯 /roll-aura route
 app.post('/roll-aura', async (req, res) => {
   const { steamId, authTicket } = req.body;
   if (!steamId || !authTicket) {
@@ -50,24 +51,19 @@ app.post('/roll-aura', async (req, res) => {
   }
 
   try {
-    // Steam Web API auth validation using POST
-    const authResponse = await axios.post(
-      'https://api.steampowered.com/ISteamUserAuth/AuthenticateUserTicket/v1/',
-      new URLSearchParams({
-        key: WEB_API_KEY,
-        appid: APP_ID,
-        ticket: authTicket
-      }),
-      { timeout: 5000 }
-    );
+    // ✅ Steam Web API ticket validation (GET)
+    const authURL = `https://api.steampowered.com/ISteamUserAuth/AuthenticateUserTicket/v1/` +
+                    `?key=${WEB_API_KEY}&appid=${APP_ID}&ticket=${authTicket}`;
 
+    const authResponse = await axios.get(authURL, { timeout: 5000 });
     const result = authResponse.data?.response;
+
     if (!result || result.steamid !== steamId) {
       console.error('[SteamAuth] Invalid auth ticket:', result);
       return res.status(401).json({ error: 'Invalid Steam auth ticket' });
     }
 
-    // Auth success, apply cooldown
+    // ⏱️ Passed — enforce cooldown
     rateLimitCache.set(steamId, now);
 
     const itemdefid = pickRandomItemDefId();
@@ -80,8 +76,8 @@ app.post('/roll-aura', async (req, res) => {
     return res.status(200).json({ success: true, itemdefid });
 
   } catch (err) {
-    const isSteamError = err.response?.data?.response || err.response?.data;
-    console.error('[ROLL ERROR]', isSteamError || err.message);
+    const steamError = err.response?.data?.response || err.response?.data;
+    console.error('[ROLL ERROR]', steamError || err.message);
     return res.status(502).json({ error: 'Application failed to respond', details: err.message });
   }
 });
