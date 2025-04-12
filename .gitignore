@@ -1,0 +1,8 @@
+# Ignore environment secrets
+.env
+
+# Ignore node_modules (should always be ignored)
+node_modules/
+
+# Optional: VSCode project settings
+.vscode/
