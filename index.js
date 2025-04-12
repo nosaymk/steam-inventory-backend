@@ -11,56 +11,46 @@ const PORT = process.env.PORT || 3000;
 const WEB_API_KEY = process.env.STEAM_WEB_API_KEY;
 const APP_ID = process.env.STEAM_APP_ID;
 
-// Weighted drop table
-const auraChances = [
-  { itemDefId: 2001, name: "Common", weight: 75 },     // 1 in 2
-  { itemDefId: 2002, name: "Uncommon", weight: 30 },   // 1 in 5
-  { itemDefId: 2003, name: "Rare", weight: 7 },        // 1 in 15
-  { itemDefId: 2004, name: "Epic", weight: 2 },        // 1 in 50
-  { itemDefId: 2005, name: "Legendary", weight: 1 },   // 1 in 150
+// Define drop odds
+const dropTable = [
+  { itemdefid: 2001, weight: 75 },   // Common
+  { itemdefid: 2002, weight: 30 },   // Uncommon
+  { itemdefid: 2003, weight: 10 },   // Rare
+  { itemdefid: 2004, weight: 3 },    // Epic
+  { itemdefid: 2005, weight: 1 },    // Legendary
 ];
 
-// Weighted random picker
-function getWeightedRandomAura() {
-  const totalWeight = auraChances.reduce((sum, aura) => sum + aura.weight, 0);
+function pickRandomItemDefId() {
+  const totalWeight = dropTable.reduce((sum, entry) => sum + entry.weight, 0);
   const roll = Math.random() * totalWeight;
-  let running = 0;
+  let cumulative = 0;
 
-  for (let aura of auraChances) {
-    running += aura.weight;
-    if (roll < running) return aura;
+  for (const entry of dropTable) {
+    cumulative += entry.weight;
+    if (roll < cumulative) return entry.itemdefid;
   }
 
-  return auraChances[0]; // Fallback to Common
+  return dropTable[0].itemdefid; // Fallback
 }
 
-// 🎯 Route: roll and grant aura
 app.post('/roll-aura', async (req, res) => {
   const { steamId } = req.body;
+  if (!steamId) return res.status(400).json({ error: 'Missing steamId' });
 
-  if (!steamId) {
-    return res.status(400).json({ error: 'Missing steamId in request body.' });
-  }
+  const itemdefid = pickRandomItemDefId();
 
-  const rolledAura = getWeightedRandomAura();
-  const grantUrl = `https://partner.steam-api.com/IInventoryService/AddItem/v1/` +
-                   `?key=${WEB_API_KEY}&appid=${APP_ID}&steamid=${steamId}` +
-                   `&itemdefid[0]=${rolledAura.itemDefId}&quantity[0]=1`;
+  const url = `https://partner.steam-api.com/IInventoryService/AddItem/v1/` +
+              `?key=${WEB_API_KEY}&appid=${APP_ID}&steamid=${steamId}` +
+              `&itemdefid[0]=${itemdefid}&quantity[0]=1`;
 
   try {
-    const response = await axios.post(grantUrl);
-    console.log(`🎲 Rolled ${rolledAura.name} (ItemDefID ${rolledAura.itemDefId}) for ${steamId}`);
-    return res.status(200).json({
-      result: 'success',
-      aura: rolledAura,
-      steam: response.data
-    });
+    const response = await axios.post(url);
+    console.log(`[BACKEND] Granted item ${itemdefid} to ${steamId}`);
+    return res.status(200).json({ success: true, itemdefid });
   } catch (err) {
-    console.error(`[ROLL ERROR]`, err.response?.data || err.message);
-    return res.status(500).json({ error: 'Failed to grant aura.', details: err.message });
+    console.error(err.response?.data || err.message);
+    return res.status(500).json({ error: 'Grant failed', details: err.message });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`✅ Steam Aura Backend live at http://localhost:${PORT}`);
-});
+app.listen(PORT, () => console.log(`✅ Backend running on port ${PORT}`));
