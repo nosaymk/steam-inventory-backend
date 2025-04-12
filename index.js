@@ -35,7 +35,7 @@ function pickRandomItemDefId() {
 
 // ⏳ Rate limiting in-memory
 const rateLimitCache = new Map();
-const RATE_LIMIT_SECONDS = 30;
+const RATE_LIMIT_SECONDS = 5;
 
 app.post('/roll-aura', async (req, res) => {
   const { steamId, authTicket } = req.body;
@@ -44,10 +44,13 @@ app.post('/roll-aura', async (req, res) => {
     return res.status(400).json({ error: 'Missing steamId or authTicket' });
   }
 
-  const lastRoll = rateLimitCache.get(steamId) || 0;
   const now = Date.now();
-  if (now - lastRoll < RATE_LIMIT_SECONDS * 1000) {
-    return res.status(429).json({ error: 'Too many rolls. Please wait.' });
+  const lastRoll = rateLimitCache.get(steamId) || 0;
+  const elapsedSeconds = (now - lastRoll) / 1000;
+
+  if (elapsedSeconds < RATE_LIMIT_SECONDS) {
+    const waitTime = Math.ceil(RATE_LIMIT_SECONDS - elapsedSeconds);
+    return res.status(429).json({ error: `Please wait ${waitTime}s before rolling again.` });
   }
 
   try {
