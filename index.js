@@ -97,6 +97,11 @@ app.post('/roll-aura', async (req, res) => {
   }
 });
 
+// ✅ NEW: Simple health check route
+app.get('/status', (req, res) => {
+  res.status(200).send('OK');
+});
+
 app.listen(PORT, () => {
   console.log(`✅ Backend running on port ${PORT}`);
 });
